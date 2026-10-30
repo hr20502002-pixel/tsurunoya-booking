@@ -224,6 +224,7 @@ select { cursor: pointer; }
 .faq-section summary::after { position: absolute; right: 5px; top: 17px; content: '+'; color: #819276; font-size: 21px; font-weight: 400; }
 .faq-section details[open] summary::after { content: '−'; }
 .faq-section details>p { max-width: 850px; padding: 0 30px 24px 0; color: var(--muted); font-size: 11px; line-height: 2; }
+.host-studio .site-footer, .host-studio .site-header .brand { display: none; }
 .site-footer { display: flex; justify-content: space-between; align-items: center; gap: 30px; margin-top: 58px; padding-block: 35px; border-top: 1px solid var(--line); }
 .site-footer .brand img { width: 130px; }
 .site-footer p { margin-right: auto; color: #98a08f; font-size: 9px; line-height: 1.9; }
@@ -904,6 +905,11 @@ const english = {
 const $=selector=>document.querySelector(selector);
 const lang=new URLSearchParams(location.search).get('lang')==='en'?'en':'ja';
 const tr=(ja,en)=>lang==='en'?en:ja;
+// Inside the STUDIO site each view is its own fixed-height page, so switching view or language moves the top window.
+const hostMode=new URLSearchParams(location.search).get('host')==='studio';
+const studioPages={ja:{calendar:'https://tsurunoya01.com/reserve-104',monthly:'https://tsurunoya01.com/monthly'},en:{calendar:'https://tsurunoya01.com/reserve-104-en',monthly:'https://tsurunoya01.com/monthly-en'}};
+const prefillKey='tsurunoya:prefill';
+if(hostMode)document.documentElement.classList.add('host-studio');
 const roomName=room=>lang==='en'?room.nameEn:room.name;
 const fullDate=date=>new Intl.DateTimeFormat(lang==='en'?'en-GB':'ja-JP',{year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).format(date);
 const shortDate=date=>`${date.getUTCMonth()+1}/${date.getUTCDate()}`;
@@ -917,6 +923,12 @@ $('#consult-start').min=key(today);$('#consult-end').min=key(addDays(today,1));
 $('#consult-notes').placeholder=tr('例：入居日は1週間ほど調整できます。法人での利用を相談したいです。','Example: My start date is flexible by a week. I would like to discuss a corporate stay.');
 const contactUrl='https://tsurunoya01.com/contact#form';
 $('#contact-link').href=contactUrl;
+function hostLinks(){
+ if(!hostMode)return;
+ const route=$('#monthly-view').hidden?'calendar':'monthly';
+ document.querySelectorAll('a[href="#calendar"],a[href="#monthly"]').forEach(a=>{a.href=studioPages[lang][a.getAttribute('href').slice(1)];a.target='_top';});
+ $('#lang-ja').href=studioPages.ja[route];$('#lang-en').href=studioPages.en[route];$('#lang-ja').target=$('#lang-en').target='_top';
+}
 function message(text,error=false){$('#calendar-message').textContent=text;$('#calendar-message').classList.toggle('error',error);}
 function updateDataStatus(){
  const values=rooms.map(room=>availability.get(room.id));
@@ -952,7 +964,7 @@ function renderCalendars(){
   const restriction=room.id==='hiyoshi'?tr('長期滞在のみ · 28〜90泊','Long stays only · 28–90 nights'):tr('29泊まで予約可 · 30泊以上は相談','Book up to 29 nights · enquire for 30+');
   return `<article id="room-card-${room.id}" class="room-card ${selected.room===room.id?'is-selected':''} ${mobileRoom===room.id?'mobile-active':''}"><div class="room-image" style="background-image:url('${room.image}')"><span class="room-area">${room.areaLabel}</span></div><div class="room-heading"><div><h3>${roomName(room)}</h3><p>${lang==='en'?room.detailEn:room.detail}</p></div><span class="room-count">${countLabel}</span></div><div class="room-restriction">${restriction}</div><div class="calendar-grid">${days}</div><div class="room-bottom"><span>${valid?tr('Beds24の空室情報','Beds24 availability'):status?.status==='loading'?tr('空室を読み込み中…','Loading availability…'):tr('空室を確認できません','Availability unconfirmed')}</span><a href="#monthly">${tr('長期の空きを見る ↗','Longer stays ↗')}</a></div></article>`;
  }).join('');
- renderSelection();updateDataStatus();
+ renderSelection();updateDataStatus();hostLinks();
 }
 function selectDay(roomId,date){
  const room=rooms.find(r=>r.id===roomId);mobileRoom=roomId;
@@ -981,7 +993,9 @@ function showBookingReview(room,count,enabled){
  $('#booking-summary').textContent=`${roomName(room)} ／ ${selected.guests} ${tr('名（大人）','adults')}\n${fullDate(selected.start)} → ${fullDate(selected.end)} ／ ${count}${tr('泊',' nights')}`;
  $('#booking-warning').textContent=enabled?tr(`お部屋・日程・人数（大人${selected.guests}名）を引き継いでBeds24の予約画面を開きます。合計料金（清掃費を含む）とキャンセル条件を確認してからお進みください。このページ上では予約・決済は行いません。`,`The room, dates and ${selected.guests} adult${selected.guests===1?'':'s'} carry over to the Beds24 booking page. Check the total (including cleaning) and cancellation terms before continuing. No reservation or payment is made on this page.`):tr('この日程は公式サイトのお問い合わせでご相談ください。','Please contact us about these dates.');
  const link=$('#booking-link');link.href=enabled?buildBookingUrl(room.id,selected.start,selected.end,selected.guests,lang):contactUrl;link.textContent=enabled?tr('Beds24で料金・条件を確認する ↗','Check price and terms on Beds24 ↗'):tr('公式サイトで問い合わせる ↗','Open the official contact form ↗');
- $('#booking-dialog').showModal();
+ const dialog=$('#booking-dialog');
+ if(hostMode){const r=$('#review-booking').getBoundingClientRect();dialog.style.position='absolute';dialog.style.margin='0 auto';dialog.style.top=Math.max(0,r.top+window.scrollY-160)+'px';}
+ dialog.showModal();
 }
 function findQuick(type){
  const stay=type==='weekend'?2:3;let date=new Date(Math.max(month.getTime(),today.getTime()));
@@ -1001,13 +1015,17 @@ function renderMonthly(){
  if(!total){const allReady=rooms.filter(r=>area==='all'||r.area===area).every(r=>availability.get(r.id)?.status==='ready'&&Date.now()-availability.get(r.id).fetchedAt<300000);$('#monthly-windows').innerHTML=`<div class="no-window">${allReady?tr('確認できた範囲には、この条件に合う連続した空き候補がありません。ご希望の時期をご相談ください。','No consecutive availability candidate matches this length in the confirmed data. Contact us with your preferred timing.'):tr('空室情報を確認中、または取得できていません。確認できない日を空室として表示しません。','Availability is loading or could not be retrieved. Unconfirmed dates are not shown as open.')}<br><button class="text-link" id="monthly-refresh" type="button">${tr('最新情報に更新','Refresh availability')}</button></div>`;$('#monthly-refresh').addEventListener('click',()=>refreshData());}
 }
 function prefillMonthly(roomId,start,end,guests=selected.guests){
+ if(hostMode&&$('#monthly-view').hidden){
+  try{localStorage.setItem(prefillKey,JSON.stringify({roomId,start:key(start),end:key(end),guests,at:Date.now()}));}catch{}
+  window.top.location.href=studioPages[lang].monthly;return;
+ }
  $('#consult-room').value=roomId;$('#consult-start').value=key(start);$('#consult-end').value=key(end);$('#consult-guests').value=guests>3?'more':String(guests);$('#consult-result').hidden=true;location.hash='monthly-consult';
 }
 function renderRoute(){
  const hash=location.hash.slice(1)||'calendar',monthly=hash.startsWith('monthly');$('#calendar-view').hidden=monthly;$('#monthly-view').hidden=!monthly;
  document.querySelectorAll('[data-route]').forEach(link=>{const active=link.dataset.route===(monthly?'monthly':'calendar');link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});
  $('#lang-ja').href=`?lang=ja#${hash}`;$('#lang-en').href=`?lang=en#${hash}`;
- if(monthly)renderMonthly();requestAnimationFrame(()=>{if(hash==='calendar'||hash==='monthly')window.scrollTo({top:0,behavior:'instant'});else document.getElementById(hash)?.scrollIntoView({behavior:'smooth',block:'start'});});
+ if(monthly)renderMonthly();hostLinks();requestAnimationFrame(()=>{if(hash==='calendar'||hash==='monthly')window.scrollTo({top:0,behavior:'instant'});else document.getElementById(hash)?.scrollIntoView({behavior:'smooth',block:'start'});});
 }
 async function refreshData(userInitiated=true){
  if(refreshJob)return refreshJob;refreshing=true;renderCalendars();
@@ -1034,6 +1052,7 @@ $('.dialog-close').addEventListener('click',()=>$('#booking-dialog').close());$(
 window.addEventListener('hashchange',renderRoute);window.addEventListener('focus',()=>{if(rooms.some(r=>Date.now()-(availability.get(r.id)?.fetchedAt||0)>=300000))refreshData(false);});
 setInterval(()=>{renderCalendars();if(!$('#monthly-view').hidden)renderMonthly();},60000);
 renderCalendars();renderMonthly();renderRoute();refreshData(false);
+if(hostMode&&!$('#monthly-view').hidden){try{const saved=JSON.parse(localStorage.getItem(prefillKey)||'null');localStorage.removeItem(prefillKey);if(saved&&Date.now()-saved.at<600000&&rooms.some(r=>r.id===saved.roomId))prefillMonthly(saved.roomId,parseDay(saved.start),parseDay(saved.end),saved.guests);}catch{}}
 
 })();
 </script>
