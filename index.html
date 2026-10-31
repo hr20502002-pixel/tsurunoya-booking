@@ -1038,7 +1038,7 @@ function quoteHtml(quote,count){
  if(!quote)return `<p class="selection-price-note">${tr('料金を確認しています…','Checking the price…')}</p>`;
  if(quote.status==='unavailable')return `<p class="selection-price-note">${tr('この日程・人数ではご予約いただけません。泊数を変えてお試しください（最低泊数は日程で変わります）。','These dates and guests cannot be booked. Please try a different length of stay (minimum nights vary by date).')}</p>`;
  if(quote.status==='error')return `<p class="selection-price-note">${tr('料金を確認できませんでした。時間をおいてお試しください。','We could not check the price. Please try again shortly.')}</p>`;
- return `<dl class="quote-lines"><div><dt>${tr(`宿泊料（${count}泊）`,`Stay (${count} nights)`)}</dt><dd>${yen(quote.rent)}</dd></div><div><dt>${tr('清掃費','Cleaning fee')}</dt><dd>${yen(quote.cleaning)}</dd></div><div class="quote-total"><dt>${tr('合計（税込）','Total (tax included)')}</dt><dd>${yen(quote.total)}</dd></div></dl>${count>=MONTHLY_MIN_NIGHTS?`<p class="selection-price-note">${longStayNote(count)}</p>`:''}`;
+ return `<dl class="quote-lines"><div><dt>${tr(`宿泊料（${count}泊）`,`Stay (${count} nights)`)}</dt><dd>${yen(quote.rent)}</dd></div><div><dt>${tr('清掃費','Cleaning fee')}</dt><dd>${yen(quote.cleaning)}</dd></div><div class="quote-total"><dt>${tr('お支払い合計','Total')}</dt><dd>${yen(quote.total)}</dd></div></dl>${count>=MONTHLY_MIN_NIGHTS?`<p class="selection-price-note">${longStayNote(count)}</p>`:''}`;
 }
 let quoteSequence=0,quoteCache={};
 function renderSelection(){
