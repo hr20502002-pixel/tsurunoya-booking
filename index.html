@@ -530,6 +530,13 @@ html[lang='en'] .room-bottom { flex-wrap: wrap; gap: 5px; }
  html[lang='en'] .legend { gap: 8px; font-size: 8px; }
  .consult-actions .primary-button { width: 100%; }
 }
+.quote-lines { margin: 12px 0 0; min-width: min(320px, 100%); }
+.quote-lines div { display: flex; justify-content: space-between; gap: 24px; padding: 5px 0; border-bottom: 1px solid #dfe4d8; font-size: 14px; }
+.quote-lines dt, .quote-lines dd { margin: 0; }
+.quote-lines .quote-total { border-bottom: 0; font-weight: 700; font-size: 16px; }
+.selection-quote { flex: 1 1 320px; }
+.primary-button.is-disabled { opacity: .45; pointer-events: none; }
+#booking-link[hidden] { display: none; }
 
 </style>
 </head>
@@ -566,7 +573,7 @@ html[lang='en'] .room-bottom { flex-wrap: wrap; gap: 5px; }
     </div>
   </main>
   <footer class="site-footer wrap"><a class="brand" href="#calendar"><img src="https://storage.googleapis.com/studio-design-asset-files/projects/moWvJyYlW6/s-604x153_v-fs_webp_6c1a8677-de27-4da3-8599-e31d1272696c.jpg" alt="つるのや TSURUNOYA"></a><p data-t="footerCopy">鶴見104・105 / 日吉205<br>空室カレンダー・マンスリー専用ページ</p><a href="https://tsurunoya01.com/" target="_blank" rel="noopener" data-t="currentSite">現在の公式サイト ↗</a></footer>
-  <dialog id="booking-dialog"><button class="dialog-close" aria-label="Close">×</button><p class="eyebrow">YOUR STAY</p><h2 data-t="reviewTitle">選んだ日程を確認</h2><div id="booking-summary"></div><p id="booking-warning" class="dialog-note"></p><a id="booking-link" class="primary-button" target="_blank" rel="noopener" data-t="continueBeds">Beds24で料金・条件を確認する ↗</a><button class="outline-button dialog-done" data-t="backCalendar">カレンダーに戻る</button></dialog>
+  <dialog id="booking-dialog"><button class="dialog-close" aria-label="Close">×</button><p class="eyebrow">YOUR STAY</p><h2 data-t="reviewTitle">選んだ日程を確認</h2><div id="booking-summary"></div><div id="booking-warning" class="dialog-note"></div><a id="booking-link" class="primary-button" target="_top" hidden data-t="continueBeds">この内容で予約へ進む →</a><button class="outline-button dialog-done" data-t="backCalendar">カレンダーに戻る</button></dialog>
   <noscript><p class="wrap">空室カレンダーにはJavaScriptが必要です。<a href="https://tsurunoya01.com/contact#form">お問い合わせ / Contact us</a></p></noscript>
   <script>
 (() => {
@@ -708,7 +715,7 @@ const rooms = Object.freeze([
     areaLabel: 'TSURUMI / ROOM 104', image: 'https://storage.googleapis.com/studio-design-asset-files/projects/Nxqg89jDa1/s-2000x1333_v-frms_webp_8fd293b3-1dff-473a-a224-03419427e82e.webp',
     detail: '鶴見駅 徒歩10分 · ロフト付き', detailEn: '10-min walk from Tsurumi Station · Loft',
     propertyId: 327526, roomId: 679595, minStay: 1, maxStay: 90, maxGuests: 3,
-    directEnabled: true, directMaxStay: 27, monthlyDirect: true,
+    directEnabled: true, directMaxStay: 27, monthlyDirect: true, cleaningFee: 11000,
     restriction: '販売可能な泊数・料金はBeds24で確認します。'
   }),
   Object.freeze({
@@ -716,7 +723,7 @@ const rooms = Object.freeze([
     areaLabel: 'TSURUMI / ROOM 105', image: 'https://storage.googleapis.com/studio-design-asset-files/projects/Nxqg89jDa1/s-2000x1333_v-frms_webp_cd97218a-50d3-4f01-ba9b-6d1f90866c9c.webp',
     detail: '鶴見駅 徒歩10分 · ロフト付き', detailEn: '10-min walk from Tsurumi Station · Loft',
     propertyId: 327526, roomId: 749805, minStay: 1, maxStay: 90, maxGuests: 3,
-    directEnabled: true, directMaxStay: 27, monthlyDirect: true,
+    directEnabled: true, directMaxStay: 27, monthlyDirect: true, cleaningFee: 11000,
     restriction: '販売可能な泊数・料金はBeds24で確認します。'
   }),
   Object.freeze({
@@ -875,6 +882,53 @@ function canBookDirect(roomId, stay) {
   return room.monthlyDirect && stay >= MONTHLY_MIN_NIGHTS;
 }
 
+/** Compact date for the public Beds24 availability API. */
+const compactDay = date => key(date).replaceAll('-', '');
+
+/**
+ * Asks Beds24 for the rent of one stay. Only a positive price on an available
+ * room counts as bookable, so minimum-stay failures never reach the checkout.
+ * text/plain keeps the public endpoint usable from the browser.
+ */
+async function fetchQuote(roomId, start, end, adults = 2, { fetchImpl = fetch, timeoutMs = 10_000 } = {}) {
+  const room = roomById.get(roomId);
+  if (!room) throw new RangeError('お部屋を選んでください。');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl('https://api.beds24.com/json/getAvailabilities', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, credentials: 'omit', mode: 'cors',
+      cache: 'no-store', signal: controller.signal,
+      body: JSON.stringify({
+        checkIn: compactDay(asDay(start)), lastNight: compactDay(addDays(asDay(end), -1)),
+        propId: String(room.propertyId), roomId: String(room.roomId), numAdult: String(adults), numChild: '0'
+      })
+    });
+    if (!response || response.ok !== true) return { status: 'error' };
+    const offer = (await response.json())?.[String(room.roomId)];
+    const rent = Number(offer?.price);
+    if (!(Number(offer?.roomsavail) >= 1) || !Number.isFinite(rent) || rent <= 0) return { status: 'unavailable' };
+    return { status: 'ok', rent, cleaning: room.cleaningFee, total: rent + room.cleaningFee };
+  } catch {
+    return { status: 'error' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Opens the guest-details step directly. Use only after fetchQuote returned ok. */
+function buildCheckoutUrl(roomId, start, end, adults = 2, lang = 'ja') {
+  const url = new URL(buildBookingUrl(roomId, start, end, adults, lang));
+  const room = roomById.get(roomId);
+  url.search = new URLSearchParams({
+    propid: String(room.propertyId), roomid: String(room.roomId), page: 'book3',
+    checkin_hide: key(asDay(start)), checkout_hide: key(asDay(end)),
+    numnight: url.searchParams.get('numnight'), numadult: String(adults), numchild: '0',
+    lang, referer: 'tsurunoya-calendar', [`br1-${room.roomId}`]: '予約'
+  }).toString();
+  return url.href;
+}
+
 /** Builds an enquiry URL only. UI must separately enforce canBookDirect. */
 function buildBookingUrl(roomId, start, end, adults = 2, lang = 'ja') {
   const room = roomById.get(roomId);
@@ -897,7 +951,7 @@ function buildBookingUrl(roomId, start, end, adults = 2, lang = 'ja') {
 }
 
 const english = {
-  preview:'A live availability preview. These changes are not yet on the main website.',navCalendar:'Find available dates',navMonthly:'Monthly stays',heroTitle:'Let available dates<br class="mobile-only"> inspire your next stay.',heroCopy:'No dates in mind yet?<br class="mobile-only"> Explore the rooms and find a time that works for you.',calendarTitle:'Availability by room',calendarHelp:'Choose your arrival, then departure. Hiyoshi is for longer stays only.',candidate:'Available candidate',unavailable:'Unavailable',unconfirmed:'Check required',weekend:'A 2-night weekend',threeNights:'Find 3 nights',monthlyLink:'28+ nights ↗',loading:'Loading availability…',refresh:'Refresh availability',firstMessage:'No date search is needed. Compare the three rooms first.',calendarFootnote:'Open dates are availability candidates at the time retrieved. Minimum stays, arrival restrictions and prices are checked by Beds24. The departure day is not a night of your stay.',teaserTitle:'A place that feels right,<br>even for a month.',teaserCopy:'Business, a temporary home, or time between moves.<br>Find consecutive open dates on our monthly stay page.',teaserButton:'Explore monthly availability & pricing',stepsTitle:'Find open dates, then check your booking.',stepOneTitle:'Choose your dates',stepOneCopy:'Pick a room, arrival and departure. A stay cannot include an unavailable night.',stepTwoTitle:'Check guests and total price',stepTwoCopy:'Confirm minimum nights, price, cleaning fees and cancellation terms on Beds24.',stepThreeTitle:'Book and pay',stepThreeCopy:'Continue once you have checked the terms. Choosing dates does not make a reservation.',monthlyHeroTitle:'Your place in Yokohama.<br>For a month, or longer.',monthlyHeroCopy:'Business trips, training, time between moves, or renovations.<br>A furnished room with everyday comforts and space for your routine.',monthlyHeroButton:'Explore longer availability windows',monthlyPriceLink:'See a 30-night pricing example →',useCases:'A stay for',business:'Business or training',moving:'Between homes',renovation:'Home renovations',longHoliday:'A longer Yokohama visit',monthlyAvailabilityTitle:'Find a window for a longer stay.',monthlyAvailabilityHelp:'Explore consecutive open dates in the same room. Prices and contract terms are checked separately.',liveSource:'Beds24 availability',stayLength:'Length of stay',thirty:'28 nights or more',monthlyGuests:'Guests',oneAdult:'1 adult',twoAdults:'2 adults',threeAdults:'3 adults',fortyFive:'45 nights or more',sixty:'60 nights or more',area:'Area',allAreas:'Tsurumi & Hiyoshi',tsurumi:'Tsurumi',hiyoshi:'Hiyoshi',monthlyFiltersCopy:'Even if your move-in date is flexible,<br>start with a window of consecutive open dates.',monthlyFootnote:'Candidates are calculated from current availability data. A reservation or hold is not made until stay limits, pricing and rental terms have been confirmed.',priceTitle:'Clear costs and terms.<br>Before you move in.',priceCopy:'Rental, cleaning and deposit are shown separately.<br>Request a formal quote for your room and dates.',pricePointOne:'Confirm the price for your room, dates and guests',pricePointTwo:'Check utilities and any additional charges',pricePointThree:'Review extensions, early departure and deposit terms',priceExample:'Tsurumi 30-night example (winter dates)',thirtyRent:'Rental for 30 nights',yenFrom:' JPY and up',yen:'JPY',cleaning:'Cleaning fee',rentCleaning:'Rental + cleaning example',deposit:'Deposit, separate from rental',exampleTotal:'Example total of listed items',priceCaveat:'This example is for January–March dates; 30 nights from April start at 231,000 yen. It is not a confirmed Hiyoshi price. The final total depends on the room, dates, guests and utilities. Deposit return terms are reviewed before the contract.',prepareInquiry:'Prepare your stay details →',lifeTitle:'Everything for everyday living.',kitchenTitle:'Meals on your own schedule.',kitchenCopy:'Check each room’s kitchen, fridge, microwave and other facilities in its photos and details.',laundryTitle:'Keep your routine.',laundryCopy:'Rooms with laundry facilities. Cleaning arrangements and consumables are explained before your stay.',locationTitle:'Choose a convenient base.',locationCopy:'Two areas: Tsurumi and Hiyoshi. Choose for your workplace, school or daily travel.',consultTitle:'Start with the stay you have in mind.',consultCopy:'Flexible dates are welcome.<br>Prepare your details and continue to the official contact form.',consultStepOne:'Discuss dates and purpose',consultStepTwo:'Check availability, quote and rental terms',consultStepThree:'Follow the booking and payment instructions',consultStepFour:'Complete the dedicated form and electronic signing',roomLabel:'Preferred room',anyRoom:'Any room / advice needed',room104:'Tsurumi 104',room105:'Tsurumi 105',roomHiyoshi:'Hiyoshi 205',guestsLabel:'Guests',oneGuest:'1 guest',twoGuests:'2 guests',threeGuests:'3 guests',moreGuests:'4+ guests / multiple rooms',moveIn:'Preferred move-in date',moveOut:'Preferred move-out date',flexible:'My dates are flexible',purpose:'Main purpose',other:'Other',notes:'Questions or requirements',prepareInquiryText:'Prepare inquiry text',formNote:'This form does not send anything. Copy the text and paste it into the official contact form.',copyInquiry:'Copy inquiry',openContact:'Open the official contact form ↗',faqTitle:'Before your longer stay.',faqOne:'Can I enquire without fixed dates?',faqOneAnswer:'Yes. Tell us your approximate start month and length of stay, such as one or two months.',faqTwo:'Does selecting dates confirm a booking?',faqTwoAnswer:'No reservation or hold is created by selecting a candidate. Confirm the quote and terms, then follow the payment and rental agreement instructions.',faqThree:'Can I book a short stay in Hiyoshi?',faqThreeAnswer:'Hiyoshi 205 currently accepts longer stays only. You can enquire about a 28–90 night stay in Hiyoshi.',footerCopy:'Tsurumi 104 & 105 / Hiyoshi 205<br>Availability calendar and monthly stays',currentSite:'Current official website ↗',reviewTitle:'Review your selected dates',continueBeds:'Check price and terms on Beds24 ↗',backCalendar:'Back to the calendar'
+  preview:'A live availability preview. These changes are not yet on the main website.',navCalendar:'Find available dates',navMonthly:'Monthly stays',heroTitle:'Let available dates<br class="mobile-only"> inspire your next stay.',heroCopy:'No dates in mind yet?<br class="mobile-only"> Explore the rooms and find a time that works for you.',calendarTitle:'Availability by room',calendarHelp:'Choose your arrival, then departure. Hiyoshi is for longer stays only.',candidate:'Available candidate',unavailable:'Unavailable',unconfirmed:'Check required',weekend:'A 2-night weekend',threeNights:'Find 3 nights',monthlyLink:'28+ nights ↗',loading:'Loading availability…',refresh:'Refresh availability',firstMessage:'No date search is needed. Compare the three rooms first.',calendarFootnote:'Open dates are availability candidates at the time retrieved. Minimum stays, arrival restrictions and prices are checked by Beds24. The departure day is not a night of your stay.',teaserTitle:'A place that feels right,<br>even for a month.',teaserCopy:'Business, a temporary home, or time between moves.<br>Find consecutive open dates on our monthly stay page.',teaserButton:'Explore monthly availability & pricing',stepsTitle:'Find open dates, then check your booking.',stepOneTitle:'Choose your dates',stepOneCopy:'Pick a room, arrival and departure. A stay cannot include an unavailable night.',stepTwoTitle:'Check guests and total price',stepTwoCopy:'Confirm minimum nights, price, cleaning fees and cancellation terms on Beds24.',stepThreeTitle:'Book and pay',stepThreeCopy:'Continue once you have checked the terms. Choosing dates does not make a reservation.',monthlyHeroTitle:'Your place in Yokohama.<br>For a month, or longer.',monthlyHeroCopy:'Business trips, training, time between moves, or renovations.<br>A furnished room with everyday comforts and space for your routine.',monthlyHeroButton:'Explore longer availability windows',monthlyPriceLink:'See a 30-night pricing example →',useCases:'A stay for',business:'Business or training',moving:'Between homes',renovation:'Home renovations',longHoliday:'A longer Yokohama visit',monthlyAvailabilityTitle:'Find a window for a longer stay.',monthlyAvailabilityHelp:'Explore consecutive open dates in the same room. Prices and contract terms are checked separately.',liveSource:'Beds24 availability',stayLength:'Length of stay',thirty:'28 nights or more',monthlyGuests:'Guests',oneAdult:'1 adult',twoAdults:'2 adults',threeAdults:'3 adults',fortyFive:'45 nights or more',sixty:'60 nights or more',area:'Area',allAreas:'Tsurumi & Hiyoshi',tsurumi:'Tsurumi',hiyoshi:'Hiyoshi',monthlyFiltersCopy:'Even if your move-in date is flexible,<br>start with a window of consecutive open dates.',monthlyFootnote:'Candidates are calculated from current availability data. A reservation or hold is not made until stay limits, pricing and rental terms have been confirmed.',priceTitle:'Clear costs and terms.<br>Before you move in.',priceCopy:'Rental, cleaning and deposit are shown separately.<br>Request a formal quote for your room and dates.',pricePointOne:'Confirm the price for your room, dates and guests',pricePointTwo:'Check utilities and any additional charges',pricePointThree:'Review extensions, early departure and deposit terms',priceExample:'Tsurumi 30-night example (winter dates)',thirtyRent:'Rental for 30 nights',yenFrom:' JPY and up',yen:'JPY',cleaning:'Cleaning fee',rentCleaning:'Rental + cleaning example',deposit:'Deposit, separate from rental',exampleTotal:'Example total of listed items',priceCaveat:'This example is for January–March dates; 30 nights from April start at 231,000 yen. It is not a confirmed Hiyoshi price. The final total depends on the room, dates, guests and utilities. Deposit return terms are reviewed before the contract.',prepareInquiry:'Prepare your stay details →',lifeTitle:'Everything for everyday living.',kitchenTitle:'Meals on your own schedule.',kitchenCopy:'Check each room’s kitchen, fridge, microwave and other facilities in its photos and details.',laundryTitle:'Keep your routine.',laundryCopy:'Rooms with laundry facilities. Cleaning arrangements and consumables are explained before your stay.',locationTitle:'Choose a convenient base.',locationCopy:'Two areas: Tsurumi and Hiyoshi. Choose for your workplace, school or daily travel.',consultTitle:'Start with the stay you have in mind.',consultCopy:'Flexible dates are welcome.<br>Prepare your details and continue to the official contact form.',consultStepOne:'Discuss dates and purpose',consultStepTwo:'Check availability, quote and rental terms',consultStepThree:'Follow the booking and payment instructions',consultStepFour:'Complete the dedicated form and electronic signing',roomLabel:'Preferred room',anyRoom:'Any room / advice needed',room104:'Tsurumi 104',room105:'Tsurumi 105',roomHiyoshi:'Hiyoshi 205',guestsLabel:'Guests',oneGuest:'1 guest',twoGuests:'2 guests',threeGuests:'3 guests',moreGuests:'4+ guests / multiple rooms',moveIn:'Preferred move-in date',moveOut:'Preferred move-out date',flexible:'My dates are flexible',purpose:'Main purpose',other:'Other',notes:'Questions or requirements',prepareInquiryText:'Prepare inquiry text',formNote:'This form does not send anything. Copy the text and paste it into the official contact form.',copyInquiry:'Copy inquiry',openContact:'Open the official contact form ↗',faqTitle:'Before your longer stay.',faqOne:'Can I enquire without fixed dates?',faqOneAnswer:'Yes. Tell us your approximate start month and length of stay, such as one or two months.',faqTwo:'Does selecting dates confirm a booking?',faqTwoAnswer:'No reservation or hold is created by selecting a candidate. Confirm the quote and terms, then follow the payment and rental agreement instructions.',faqThree:'Can I book a short stay in Hiyoshi?',faqThreeAnswer:'Hiyoshi 205 currently accepts longer stays only. You can enquire about a 28–90 night stay in Hiyoshi.',footerCopy:'Tsurumi 104 & 105 / Hiyoshi 205<br>Availability calendar and monthly stays',currentSite:'Current official website ↗',reviewTitle:'Review your selected dates',continueBeds:'Continue to booking →',backCalendar:'Back to the calendar'
 };
 
 
@@ -961,7 +1015,7 @@ function renderCalendars(){
   const remainder=(new Date(Date.UTC(year,m,1)).getUTCDay()+count)%7;if(remainder)days+='<span class="empty-day" aria-hidden="true"></span>'.repeat(7-remainder);
   const status=availability.get(room.id);const valid=status?.status==='ready'&&Date.now()-status.fetchedAt<300000;
   const countLabel=valid?tr(`空き候補<br>${availableCount}日`,`Open candidates<br>${availableCount} days`):tr('確認中','Unconfirmed');
-  const restriction=room.id==='hiyoshi'?tr('長期滞在のみ · 28〜90泊','Long stays only · 28–90 nights'):tr('1〜90泊を予約可 · 28泊以上は賃貸契約','Book 1–90 nights · 28+ nights are a rental contract');
+  const restriction=room.id==='hiyoshi'?tr('長期滞在のみ · 28〜90泊','Long stays only · 28–90 nights'):tr(`1〜90泊を予約可 · 清掃費${yen(room.cleaningFee)}（1滞在ごと）· 28泊以上は賃貸契約`,`Book 1–90 nights · Cleaning ${yen(room.cleaningFee)} per stay · 28+ nights are a rental contract`);
   return `<article id="room-card-${room.id}" class="room-card ${selected.room===room.id?'is-selected':''} ${mobileRoom===room.id?'mobile-active':''}"><div class="room-image" style="background-image:url('${room.image}')"><span class="room-area">${room.areaLabel}</span></div><div class="room-heading"><div><h3>${roomName(room)}</h3><p>${lang==='en'?room.detailEn:room.detail}</p></div><span class="room-count">${countLabel}</span></div><div class="room-restriction">${restriction}</div><div class="calendar-grid">${days}</div><div class="room-bottom"><span>${valid?tr('Beds24の空室情報','Beds24 availability'):status?.status==='loading'?tr('空室を読み込み中…','Loading availability…'):tr('空室を確認できません','Availability unconfirmed')}</span><a href="#monthly">${tr('長期の空きを見る ↗','Longer stays ↗')}</a></div></article>`;
  }).join('');
  renderSelection();updateDataStatus();hostLinks();
@@ -975,27 +1029,58 @@ function selectDay(roomId,date){
  } else {if(!isOpen(room,date))return;selected={room:roomId,start:date,end:null,guests:selected.guests};message(tr(`${roomName(room)}・${shortDate(date)}を到着日に選びました。出発日を選んでください。${room.id==='hiyoshi'?'日吉は28泊以上です。':''}`,`${roomName(room)}: arrival on ${fullDate(date)}. Choose your departure.${room.id==='hiyoshi'?' Hiyoshi requires at least 28 nights.':''}`));}
  renderCalendars();
 }
+const yen=value=>tr(`${Number(value).toLocaleString('ja-JP')}円`,`¥${Number(value).toLocaleString('en-US')}`);
+function longStayNote(count){
+ if(count<MONTHLY_MIN_NIGHTS)return '';
+ return tr(`28泊以上は賃貸契約です。別途、預り金30,000円を振込でお預かりし、予約後に契約のご案内をお送りします。${count>30?'お支払いは予約時に最初の30日分、以降は30日ごとに登録カードへ請求します。':''}`,`Stays of 28+ nights are a rental contract. A 30,000 yen deposit is paid separately by bank transfer, and we send the contract details after booking.${count>30?' The first 30 days are charged at booking, then every 30 days to the registered card.':''}`);
+}
+function quoteHtml(quote,count){
+ if(!quote)return `<p class="selection-price-note">${tr('料金を確認しています…','Checking the price…')}</p>`;
+ if(quote.status==='unavailable')return `<p class="selection-price-note">${tr('この日程・人数ではご予約いただけません。泊数を変えてお試しください（最低泊数は日程で変わります）。','These dates and guests cannot be booked. Please try a different length of stay (minimum nights vary by date).')}</p>`;
+ if(quote.status==='error')return `<p class="selection-price-note">${tr('料金を確認できませんでした。時間をおいてお試しください。','We could not check the price. Please try again shortly.')}</p>`;
+ return `<dl class="quote-lines"><div><dt>${tr(`宿泊料（${count}泊）`,`Stay (${count} nights)`)}</dt><dd>${yen(quote.rent)}</dd></div><div><dt>${tr('清掃費','Cleaning fee')}</dt><dd>${yen(quote.cleaning)}</dd></div><div class="quote-total"><dt>${tr('合計（税込）','Total (tax included)')}</dt><dd>${yen(quote.total)}</dd></div></dl>${count>=MONTHLY_MIN_NIGHTS?`<p class="selection-price-note">${longStayNote(count)}</p>`:''}`;
+}
+let quoteSequence=0,quoteCache={};
 function renderSelection(){
  const panel=$('#selection-panel');if(!selected.end){panel.hidden=true;return;}panel.hidden=false;
  const room=rooms.find(r=>r.id===selected.room),count=nights(selected.start,selected.end),longStay=!canBookDirect(room.id,count);
  const candidate=isOpenRange(room,selected.start,selected.end);
  if(selected.guests>room.maxGuests)selected.guests=room.maxGuests;
- panel.innerHTML=`<div><h3>${roomName(room)} <small>／${count}${tr('泊',' nights')}</small></h3><p>${fullDate(selected.start)} → ${fullDate(selected.end)}</p><p class="selection-price-note">${!candidate?tr('情報の更新が必要です。「最新情報に更新」を押してください。','Please refresh availability before continuing.'):longStay?tr('長期滞在は正式な見積り・契約条件の確認へ進みます。','Longer stays continue to a formal quote and rental terms.'):tr('空室の候補です。最低泊数・総額はBeds24でご確認ください。','An availability candidate. Check minimum nights and the final total on Beds24.')}</p></div><label>${tr('大人','Adults')}<select id="stay-guests">${Array.from({length:room.maxGuests},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===selected.guests?'selected':''}>${n}${tr('名','')}</option>`).join('')}</select></label><button id="review-booking" class="primary-button" ${!candidate||refreshing?'disabled':''}>${longStay?tr('長期滞在の相談へ','Enquire about this stay'):tr('料金・条件を確認する','Check price & terms')} <span>→</span></button>`;
- $('#stay-guests').addEventListener('change',e=>{selected.guests=Number(e.target.value);});
- $('#review-booking').addEventListener('click',async()=>{
-  if(longStay){prefillMonthly(room.id,selected.start,selected.end,selected.guests);return;}
-  const snapshot={...selected};await refreshData(false);if(selected.room!==snapshot.room||selected.start?.getTime()!==snapshot.start.getTime()||selected.end?.getTime()!==snapshot.end.getTime())return;
-  if(!isOpenRange(room,snapshot.start,snapshot.end)){message(tr('最新の情報で、この期間の空きを確認できませんでした。別の日程を選んでください。','These dates could not be confirmed after refreshing. Please choose other dates.'),true);return;}
-  showBookingReview(room,count,true);
+ const head=`<h3>${roomName(room)} <small>／${count}${tr('泊',' nights')}</small></h3><p>${fullDate(selected.start)} → ${fullDate(selected.end)}</p>`;
+ const guestsSelect=`<label>${tr('大人','Adults')}<select id="stay-guests">${Array.from({length:room.maxGuests},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===selected.guests?'selected':''}>${n}${tr('名','')}</option>`).join('')}</select></label>`;
+ if(longStay||!candidate){
+  panel.innerHTML=`<div>${head}<p class="selection-price-note">${!candidate?tr('情報の更新が必要です。「最新情報に更新」を押してください。','Please refresh availability before continuing.'):tr('長期滞在は正式な見積り・契約条件の確認へ進みます。','Longer stays continue to a formal quote and rental terms.')}</p></div>${guestsSelect}<button id="review-booking" class="primary-button" ${!candidate||refreshing?'disabled':''}>${tr('長期滞在の相談へ','Enquire about this stay')} <span>→</span></button>`;
+  $('#stay-guests').addEventListener('change',e=>{selected.guests=Number(e.target.value);});
+  $('#review-booking').addEventListener('click',()=>prefillMonthly(room.id,selected.start,selected.end,selected.guests));
+  return;
+ }
+ const quoteKey=[room.id,key(selected.start),key(selected.end),selected.guests].join();
+ const cached=quoteCache.key===quoteKey&&Date.now()-quoteCache.at<300000?quoteCache.quote:null;
+ panel.innerHTML=`<div class="selection-quote">${head}<div id="selection-quote">${quoteHtml(cached,count)}</div></div>${guestsSelect}<a id="book-now" class="primary-button is-disabled" aria-disabled="true" target="_top">${tr('この内容で予約へ進む','Continue to booking')} <span>→</span></a>`;
+ $('#stay-guests').addEventListener('change',e=>{selected.guests=Number(e.target.value);renderSelection();});
+ const snapshot={...selected};
+ const enable=()=>{const link=$('#book-now');link.href=buildCheckoutUrl(room.id,snapshot.start,snapshot.end,snapshot.guests,lang);link.classList.remove('is-disabled');link.removeAttribute('aria-disabled');};
+ if(cached){if(cached.status==='ok')enable();return;}
+ const sequence=++quoteSequence;
+ fetchQuote(room.id,snapshot.start,snapshot.end,snapshot.guests).then(quote=>{
+  if(sequence!==quoteSequence)return;
+  quoteCache={key:quoteKey,quote,at:Date.now()};
+  $('#selection-quote').innerHTML=quoteHtml(quote,count);
+  if(quote.status==='ok')enable();
  });
 }
-function showBookingReview(room,count,enabled,anchor=$('#review-booking')){
- $('#booking-summary').textContent=`${roomName(room)} ／ ${selected.guests} ${tr('名（大人）','adults')}\n${fullDate(selected.start)} → ${fullDate(selected.end)} ／ ${count}${tr('泊',' nights')}`;
- $('#booking-warning').textContent=enabled?tr(`お部屋・日程・人数（大人${selected.guests}名）を引き継いでBeds24の予約画面を開きます。合計料金（清掃費を含む）とキャンセル条件を確認してからお進みください。このページ上では予約・決済は行いません。${count>=MONTHLY_MIN_NIGHTS?'28泊以上は賃貸契約としてお受けし、予約後に契約のご案内をお送りします。31泊以上は予約時に最初の30日分、以降は30日ごとに登録カードへ請求します。':''}`,`The room, dates and ${selected.guests} adult${selected.guests===1?'':'s'} carry over to the Beds24 booking page. Check the total (including cleaning) and cancellation terms before continuing. No reservation or payment is made on this page.${count>=MONTHLY_MIN_NIGHTS?' Stays of 28+ nights are a rental contract; we send the contract details after booking. For 31+ nights, the first 30 days are charged at booking and the rest every 30 days to the registered card.':''}`):tr('この日程は公式サイトのお問い合わせでご相談ください。','Please contact us about these dates.');
- const link=$('#booking-link');link.href=enabled?buildBookingUrl(room.id,selected.start,selected.end,selected.guests,lang):contactUrl;link.textContent=enabled?tr('Beds24で料金・条件を確認する ↗','Check price and terms on Beds24 ↗'):tr('公式サイトで問い合わせる ↗','Open the official contact form ↗');
+async function showBookingReview(room,count,anchor){
+ const snapshot={...selected},sequence=++quoteSequence;
+ $('#booking-summary').textContent=`${roomName(room)} ／ ${snapshot.guests} ${tr('名（大人）','adults')}\n${fullDate(snapshot.start)} → ${fullDate(snapshot.end)} ／ ${count}${tr('泊',' nights')}`;
+ const quoteBox=$('#booking-warning'),link=$('#booking-link');
+ quoteBox.innerHTML=quoteHtml(null,count);link.hidden=true;link.textContent=tr('この内容で予約へ進む →','Continue to booking →');
  const dialog=$('#booking-dialog');
  if(hostMode){const r=anchor.getBoundingClientRect();dialog.style.position='absolute';dialog.style.margin='0 auto';dialog.style.top=Math.max(0,r.top+window.scrollY-160)+'px';}
  dialog.showModal();
+ const quote=await fetchQuote(room.id,snapshot.start,snapshot.end,snapshot.guests);
+ if(sequence!==quoteSequence)return;
+ quoteBox.innerHTML=quoteHtml(quote,count);
+ if(quote.status==='ok'){link.href=buildCheckoutUrl(room.id,snapshot.start,snapshot.end,snapshot.guests,lang);link.hidden=false;}
 }
 function findQuick(type){
  const stay=type==='weekend'?2:3;let date=new Date(Math.max(month.getTime(),today.getTime()));
@@ -1037,7 +1122,7 @@ $('#room-calendars').addEventListener('click',event=>{const b=event.target.close
 $('#mobile-room-tabs').addEventListener('click',event=>{const b=event.target.closest('[data-room-tab]');if(b){mobileRoom=b.dataset.roomTab;renderCalendars();}});
 $('#prev-month').addEventListener('click',()=>{month=new Date(Date.UTC(month.getUTCFullYear(),month.getUTCMonth()-1,1));renderCalendars();});$('#next-month').addEventListener('click',()=>{month=new Date(Date.UTC(month.getUTCFullYear(),month.getUTCMonth()+1,1));renderCalendars();});
 document.querySelectorAll('[data-find]').forEach(b=>b.addEventListener('click',()=>findQuick(b.dataset.find)));$('#refresh-availability').addEventListener('click',()=>refreshData());
-$('#monthly-nights').addEventListener('change',renderMonthly);$('#monthly-area').addEventListener('change',renderMonthly);$('#monthly-windows').addEventListener('click',e=>{const b=e.target.closest('[data-monthly-room]');if(!b)return;const room=rooms.find(r=>r.id===b.dataset.monthlyRoom),start=parseDay(b.dataset.monthlyStart),end=parseDay(b.dataset.monthlyEnd),count=nights(start,end),guests=Math.min(Number($('#monthly-guests').value),room.maxGuests);if(canBookDirect(room.id,count)){selected={room:room.id,start,end,guests};showBookingReview(room,count,true,b);}else prefillMonthly(room.id,start,end,guests);});
+$('#monthly-nights').addEventListener('change',renderMonthly);$('#monthly-area').addEventListener('change',renderMonthly);$('#monthly-windows').addEventListener('click',e=>{const b=e.target.closest('[data-monthly-room]');if(!b)return;const room=rooms.find(r=>r.id===b.dataset.monthlyRoom),start=parseDay(b.dataset.monthlyStart),end=parseDay(b.dataset.monthlyEnd),count=nights(start,end),guests=Math.min(Number($('#monthly-guests').value),room.maxGuests);if(canBookDirect(room.id,count)){selected={room:room.id,start,end,guests};showBookingReview(room,count,b);}else prefillMonthly(room.id,start,end,guests);});
 $('#consult-form').addEventListener('submit',event=>{
  event.preventDefault();const start=$('#consult-start').value,end=$('#consult-end').value,roomId=$('#consult-room').value,room=rooms.find(r=>r.id===roomId),result=$('#consult-result'),feedback=$('#consult-feedback');result.hidden=false;$('#consult-text').hidden=true;$('.consult-actions').hidden=true;
  const min=room?.id==='hiyoshi'?28:MONTHLY_MIN_NIGHTS;
