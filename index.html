@@ -542,7 +542,7 @@ html[lang='en'] .room-bottom { flex-wrap: wrap; gap: 5px; }
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="#calendar" aria-label="つるのや"><img src="https://storage.googleapis.com/studio-design-asset-files/projects/moWvJyYlW6/s-604x153_v-fs_webp_6c1a8677-de27-4da3-8599-e31d1272696c.jpg" alt="つるのや TSURUNOYA"></a>
+    <a class="brand" href="https://tsurunoya01.com/" target="_top" aria-label="つるのや"><img src="https://storage.googleapis.com/studio-design-asset-files/projects/moWvJyYlW6/s-604x153_v-fs_webp_6c1a8677-de27-4da3-8599-e31d1272696c.jpg" alt="つるのや TSURUNOYA"></a>
     <nav aria-label="Main navigation"><a class="nav-link" href="#calendar" data-route="calendar" data-t="navCalendar">空いている日から探す</a><a class="nav-link" href="#monthly" data-route="monthly" data-t="navMonthly">マンスリー</a></nav>
     <div class="language-switch" aria-label="Language"><a id="lang-ja" href="?lang=ja#calendar" lang="ja">JP</a><span>/</span><a id="lang-en" href="?lang=en#calendar" lang="en">EN</a></div>
   </header>
@@ -572,7 +572,7 @@ html[lang='en'] .room-bottom { flex-wrap: wrap; gap: 5px; }
       <section class="faq-section wrap"><p class="eyebrow">BEFORE YOUR STAY</p><h2 data-t="faqTitle">長期滞在の前に。</h2><details><summary data-t="faqOne">まだ日付が決まっていなくても相談できますか？</summary><p data-t="faqOneAnswer">「○月から1〜2か月程度」など、入居時期と期間の目安からご相談ください。</p></details><details><summary data-t="faqTwo">カレンダーを選べば予約が確定しますか？</summary><p data-t="faqTwoAnswer">空き候補を選ぶだけでは予約・在庫確保は成立しません。正式見積り・予約条件を確認し、案内に沿って支払いと契約手続きを進めます。</p></details><details><summary data-t="faqThree">日吉は短期でも泊まれますか？</summary><p data-t="faqThreeAnswer">現在、日吉205は長期滞在のみご案内しています。日吉の長期滞在は28〜90泊でご相談いただけます。</p></details></section>
     </div>
   </main>
-  <footer class="site-footer wrap"><a class="brand" href="#calendar"><img src="https://storage.googleapis.com/studio-design-asset-files/projects/moWvJyYlW6/s-604x153_v-fs_webp_6c1a8677-de27-4da3-8599-e31d1272696c.jpg" alt="つるのや TSURUNOYA"></a><p data-t="footerCopy">鶴見104・105 / 日吉205<br>空室カレンダー・マンスリー専用ページ</p><a href="https://tsurunoya01.com/" target="_blank" rel="noopener" data-t="currentSite">現在の公式サイト ↗</a></footer>
+  <footer class="site-footer wrap"><a class="brand" href="https://tsurunoya01.com/" target="_top"><img src="https://storage.googleapis.com/studio-design-asset-files/projects/moWvJyYlW6/s-604x153_v-fs_webp_6c1a8677-de27-4da3-8599-e31d1272696c.jpg" alt="つるのや TSURUNOYA"></a><p data-t="footerCopy">鶴見104・105 / 日吉205<br>空室カレンダー・マンスリー専用ページ</p><a href="https://tsurunoya01.com/" target="_blank" rel="noopener" data-t="currentSite">現在の公式サイト ↗</a></footer>
   <dialog id="booking-dialog"><button class="dialog-close" aria-label="Close">×</button><p class="eyebrow">YOUR STAY</p><h2 data-t="reviewTitle">選んだ日程を確認</h2><div id="booking-summary"></div><div id="booking-warning" class="dialog-note"></div><a id="booking-link" class="primary-button" target="_top" hidden data-t="continueBeds">この内容で予約へ進む →</a><button class="outline-button dialog-done" data-t="backCalendar">カレンダーに戻る</button></dialog>
   <noscript><p class="wrap">空室カレンダーにはJavaScriptが必要です。<a href="https://tsurunoya01.com/contact#form">お問い合わせ / Contact us</a></p></noscript>
   <script>
@@ -976,7 +976,7 @@ $('#lang-'+lang).setAttribute('aria-current','page');
 $('#consult-start').min=key(today);$('#consult-end').min=key(addDays(today,1));
 $('#consult-notes').placeholder=tr('例：入居日は1週間ほど調整できます。法人での利用を相談したいです。','Example: My start date is flexible by a week. I would like to discuss a corporate stay.');
 const contactUrl='https://tsurunoya01.com/contact#form';
-$('#contact-link').href=contactUrl;
+if(lang==='en')document.querySelectorAll('.brand').forEach(a=>{a.href='https://tsurunoya01.com/en';});$('#contact-link').href=contactUrl;
 function hostLinks(){
  if(!hostMode)return;
  const route=$('#monthly-view').hidden?'calendar':'monthly';
