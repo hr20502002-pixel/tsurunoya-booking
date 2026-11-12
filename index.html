@@ -730,7 +730,7 @@ const rooms = Object.freeze([
     id: 'hiyoshi', name: '日吉205', nameEn: 'Hiyoshi 205', area: 'hiyoshi',
     areaLabel: 'HIYOSHI / ROOM 205', image: 'https://storage.googleapis.com/studio-design-asset-files/projects/Nxqg89jDa1/s-2000x1500_v-frms_webp_d68f3fec-c814-4c74-87d6-fca1a06f499f.webp',
     detail: '日吉駅 徒歩15分', detailEn: '15-min walk from Hiyoshi Station',
-    propertyId: 364225, roomId: 750353, minStay: 2, maxStay: 90, maxGuests: 4,
+    propertyId: 364225, roomId: 750353, bookRoomId: 757186, minStay: 2, maxStay: 90, maxGuests: 4,
     directEnabled: true, directMaxStay: 27, monthlyDirect: true, cleaningFee: 11000,
     restriction: '2〜90泊。日程を選ぶと、ご予約の可否と料金を表示します。ご予約はリクエスト制で、承認後に確定します。'
   })
@@ -890,7 +890,7 @@ const compactDay = date => key(date).replaceAll('-', '');
  * room counts as bookable, so minimum-stay failures never reach the checkout.
  * text/plain keeps the public endpoint usable from the browser.
  */
-/** Beds24 room that takes direct bookings; 104 books through its booking-page twin (757135). */
+/** Beds24 room that takes direct bookings; 104 and Hiyoshi book through booking-page twins (757135, 757186). */
 function bookingRoomId(room) {
   return room.bookRoomId ?? room.roomId;
 }
